@@ -32,3 +32,7 @@ sealed class UiState {
     data class Success(val user: UserSession) : UiState()
     data class Error(val message: String) : UiState()
 }
+data class ChatMessage(
+    val text: String,
+    val isUser: Boolean
+)

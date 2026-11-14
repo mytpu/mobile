@@ -5,6 +5,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.mytpumobile.ui.theme.AppThemeMode
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -23,7 +24,7 @@ class AuthViewModel : ViewModel() {
     private var currentRefreshToken: String? = null
 
     init {
-        // Проверка сохранёного токена при запуске приложения
+        // Проверка сохранённого токена при запуске приложения
         checkExistingToken()
     }
 
@@ -32,7 +33,7 @@ class AuthViewModel : ViewModel() {
         checkExistingToken()
     }
 
-    //Первичный вход в систему
+    // Первичный вход в систему
     fun oauthLogin(network: String, socialToken: String) {
         _uiState.value = UiState.Loading
         viewModelScope.launch {
@@ -47,7 +48,7 @@ class AuthViewModel : ViewModel() {
                 return@launch
             }
 
-            //запрос к API
+            // Запрос к API
             try {
                 val request = OAuthRequest(
                     network = network,
@@ -67,15 +68,15 @@ class AuthViewModel : ViewModel() {
         }
     }
 
-    //Получение данных пользователя
+    // Получение данных пользователя
     private suspend fun loadUserInfo(token: String) {
         if (isMockMode) {
             _uiState.value = UiState.Success(
                 UserSession(
-                    name = "Иванов Иван Иванович",
+                    name = "Анна Ковалёва",
                     token = token,
                     email = "ivanov@tpu.ru",
-                    group = "ИВТ-1234"
+                    group = "8К31"
                 )
             )
             return
@@ -101,7 +102,7 @@ class AuthViewModel : ViewModel() {
         }
     }
 
-    //Проверка токена при запуске
+    // Проверка токена при запуске
     private fun checkExistingToken() {
         viewModelScope.launch {
             if (isMockMode) {
@@ -131,7 +132,7 @@ class AuthViewModel : ViewModel() {
         }
     }
 
-    //Обновление токена
+    // Обновление токена
     private fun refreshExistingToken() {
         viewModelScope.launch {
             val refreshToken = getSavedRefreshToken()
@@ -153,7 +154,7 @@ class AuthViewModel : ViewModel() {
         }
     }
 
-    //Обработка кодов ошибок
+    // Обработка кодов ошибок
     private fun handleError(code: Int) {
         when (code) {
             400 -> _uiState.value = UiState.Error("Неверные данные для входа")
@@ -165,15 +166,16 @@ class AuthViewModel : ViewModel() {
         }
     }
 
-    //Временное хранение токенов в памяти
+    // Временное хранение токенов в памяти
     private suspend fun saveTokens(tokens: AuthTokens) {
         currentAccessToken = tokens.access_token
         currentRefreshToken = tokens.refresh_token
-        // реализация сохранения
     }
 
     private suspend fun getSavedAccessToken(): String? = currentAccessToken
     private suspend fun getSavedRefreshToken(): String? = currentRefreshToken
+
+    // --- БЛОК ЧАТА С НЕЙРОСЕТЬЮ (ПОМОЩНИК) ---
 
     var mlUserInput by mutableStateOf("")
         private set
@@ -182,38 +184,199 @@ class AuthViewModel : ViewModel() {
     var isMLProcessing by mutableStateOf(false)
         private set
 
-    // Функция обновления текста из UI
+    var chatMessages by mutableStateOf(listOf<ChatMessage>())
+        private set
+
     fun updateMLInput(text: String) {
         mlUserInput = text
+    }
+
+    fun clearChat() {
+        chatMessages = emptyList()
+        mlUserInput = ""
+        mlResponse = ""
+    }
+
+    fun logout() {
+        currentAccessToken = null
+        currentRefreshToken = null
+        clearChat()
+        _uiState.value = UiState.NotAuthenticated
     }
 
     fun sendToNeuralNetwork() {
         if (mlUserInput.isBlank()) return
 
+        val currentQuery = mlUserInput
+        chatMessages = chatMessages + ChatMessage(text = currentQuery, isUser = true)
+        mlUserInput = "" // сразу очищаем поле ввода
         isMLProcessing = true
-        mlResponse = "" // очистка старого ответа
+        mlResponse = ""
 
         viewModelScope.launch {
             if (isMockModeML) {
-                mlResponse = "Это заглушка ответа нейросети на запрос: \"$mlUserInput\". В реальном режиме здесь будет ответ от API."
+                delay(800)
+                val reply = "Это заглушка ответа нейросети на запрос: \"$currentQuery\"."
+                mlResponse = reply
+                chatMessages = chatMessages + ChatMessage(text = reply, isUser = false)
                 isMLProcessing = false
                 return@launch
             }
             try {
-                val request = MLRequest(message = mlUserInput)
+                val request = MLRequest(message = currentQuery)
                 val response = MLApiClient.api.sendMessage(request)
 
-                if (response.isSuccessful && response.body() != null) {
-                    mlResponse = response.body()!!.message
+                val replyText = if (response.isSuccessful && response.body() != null) {
+                    response.body()!!.message
                 } else {
-                    mlResponse = "Ошибка API: ${response.code()}"
+                    "Ошибка API: ${response.code()}"
                 }
+                mlResponse = replyText
+                chatMessages = chatMessages + ChatMessage(text = replyText, isUser = false)
             } catch (e: Exception) {
-                mlResponse = "Ошибка сети: ${e.message}"
+                val errText = "Ошибка сети: ${e.message}"
+                mlResponse = errText
+                chatMessages = chatMessages + ChatMessage(text = errText, isUser = false)
             }
             isMLProcessing = false
         }
     }
+
+    // --- БЛОК ТЕМЫ И НАСТРОЙКИ ДОСКИ ---
+
+    var themeMode by mutableStateOf(AppThemeMode.LIGHT)
+        private set
+
+    fun updateTheme(mode: AppThemeMode) {
+        themeMode = mode
+    }
+
+    var dashboardWidgets by mutableStateOf(
+        listOf(
+            DashboardWidgetConfig(DashboardWidgetType.SCHEDULE, WidgetSize.L, isEnabled = true),
+            DashboardWidgetConfig(DashboardWidgetType.DEADLINES, WidgetSize.S, isEnabled = true),
+            DashboardWidgetConfig(DashboardWidgetType.GRADES, WidgetSize.S, isEnabled = true),
+            DashboardWidgetConfig(DashboardWidgetType.TICKETS, WidgetSize.M, isEnabled = true),
+            DashboardWidgetConfig(DashboardWidgetType.MAIL_MOODLE, WidgetSize.M, isEnabled = true),
+            DashboardWidgetConfig(DashboardWidgetType.INSTRUCTIONS, WidgetSize.M, isEnabled = false),
+            DashboardWidgetConfig(DashboardWidgetType.MY_COURSES, WidgetSize.M, isEnabled = false)
+        )
+    )
+        private set
+
+    fun changeWidgetSize(type: DashboardWidgetType, newSize: WidgetSize) {
+        dashboardWidgets = dashboardWidgets.map {
+            if (it.type == type) it.copy(size = newSize) else it
+        }
+    }
+
+    fun toggleWidgetEnabled(type: DashboardWidgetType, enabled: Boolean) {
+        dashboardWidgets = dashboardWidgets.map {
+            if (it.type == type) it.copy(isEnabled = enabled) else it
+        }
+    }
+
+    fun moveEnabledWidget(fromIndex: Int, toIndex: Int) {
+        val enabledList = dashboardWidgets.filter { it.isEnabled }.toMutableList()
+        val disabledList = dashboardWidgets.filter { !it.isEnabled }
+        if (fromIndex in enabledList.indices && toIndex in enabledList.indices) {
+            val item = enabledList.removeAt(fromIndex)
+            enabledList.add(toIndex, item)
+            dashboardWidgets = enabledList + disabledList
+        }
+    }
+
+
+    var tickets by mutableStateOf(MockTicketsData.initialTickets)
+        private set
+
+    var activeTicketDraft by mutableStateOf<TicketDraft?>(null)
+        private set
+
+    fun addTicketComment(ticketId: String, message: String) {
+        if (message.isBlank()) return
+        tickets = tickets.map { ticket ->
+            if (ticket.id == ticketId) {
+                val newComment = TicketComment("Вы", "сейчас", message, isStudent = true)
+                ticket.copy(
+                    status = TicketStatus.IN_PROGRESS,
+                    lastMessagePreview = "«$message»",
+                    lastUpdateTime = "сейчас",
+                    comments = ticket.comments + newComment
+                )
+            } else ticket
+        }
+    }
+
+    fun resolveTicket(ticketId: String) {
+        tickets = tickets.map {
+            if (it.id == ticketId) it.copy(status = TicketStatus.RESOLVED) else it
+        }
+    }
+
+    fun withdrawTicket(ticketId: String) {
+        tickets = tickets.filterNot { it.id == ticketId }
+    }
+
+    fun createDormitoryTicket(dorm: String, room: String, category: String, description: String) {
+        val newId = (102852..102999).random().toString()
+        val newTicket = TpuTicket(
+            id = newId,
+            department = "кампус",
+            title = "$category · Общежитие $dorm, комн. $room",
+            status = TicketStatus.IN_PROGRESS,
+            lastMessagePreview = "«$description»",
+            lastUpdateTime = "только что",
+            deadlineText = "срок 2–5 дней",
+            timeline = listOf(
+                TicketTimelineStep("Зарегистрирована", "Сегодня, только что", isCompleted = true, isCurrent = true),
+                TicketTimelineStep("Назначена службе кампуса", "", isCompleted = false),
+                TicketTimelineStep("В работе", "", isCompleted = false),
+                TicketTimelineStep("Решена", "", isCompleted = false)
+            ),
+            comments = listOf(
+                TicketComment("Вы", "только что", description, isStudent = true)
+            )
+        )
+        tickets = listOf(newTicket) + tickets
+    }
+
+    fun prepareDraftFromAssistant() {
+        activeTicketDraft = TicketDraft(
+            serviceName = "Доступ к системе электронного обучения (Moodle)",
+            description = "Moodle пишет «неверный пароль». По инструкции devdocs выходил везде, чистил cookie и входил через ТПУ — не помогло.",
+            attachmentName = "скриншот-ошибки.png · 240 КБ"
+        )
+    }
+
+    fun confirmTicketDraft() {
+        val draft = activeTicketDraft ?: return
+        val newTicket = TpuTicket(
+            id = "102855",
+            department = "ИТ-служба",
+            title = "Доступ к Moodle",
+            status = TicketStatus.IN_PROGRESS,
+            lastMessagePreview = "«${draft.description}»",
+            lastUpdateTime = "только что",
+            deadlineText = "ответ до 30.10",
+            timeline = listOf(
+                TicketTimelineStep("Зарегистрирована", "Сегодня, только что", isCompleted = true, isCurrent = true),
+                TicketTimelineStep("Назначена ИТ-службе", "", isCompleted = false),
+                TicketTimelineStep("В работе", "", isCompleted = false)
+            ),
+            comments = listOf(
+                TicketComment("Вы · через помощника", "только что", draft.description, isStudent = true)
+            )
+        )
+        tickets = listOf(newTicket) + tickets
+        activeTicketDraft = null
+        chatMessages = chatMessages + ChatMessage(
+            text = "Готово, заявка №102855 зарегистрирована в help.tpu.ru. Напишу, когда исполнитель ответит.",
+            isUser = false
+        )
+    }
+
+    fun cancelTicketDraft() {
+        activeTicketDraft = null
+    }
 }
-
-
